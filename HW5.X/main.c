@@ -166,7 +166,9 @@ unsigned short triwave(void)  {
 		trivec[j] = 255*((double)j/TRILEN/2);                     
     }
     for(j=TRILEN/2; j<TRILEN; j++) {
-		trivec[j] = 255 - 255*((double)j/TRILEN/2);                     
+        int i = 0;
+		trivec[j] = 255 - 255*((double)i/TRILEN/2);  
+        i++;
     }
     return trivec;
 }
