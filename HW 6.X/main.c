@@ -1,7 +1,7 @@
 #include<xc.h>           // processor SFR definitions
 #include<sys/attribs.h>  // __ISR macro
 #include<stdio.h>
-#include<math.h>
+#include "i2c_master_noint.h"
 
 #define NU32_DESIRED_BAUD 230400    // Baudrate for RS232
 #define NU32_SYS_FREQ 48000000ul    // 48 million Hz
@@ -93,87 +93,51 @@ void StartUART1(){
     U1MODEbits.ON = 1;
 }
 
-/////////////////////////////////////////////////SPI DAC
-
-#define CS LATBbits.LATB15
-
-#define SINLEN 100              //  length of sin wave values
-#define TRILEN 100              // 	length of tri wave values
-
-#define pi 3.14159
-
-void initSPI() {
-    // Pin B14 has to be SCK1
-    // Turn of analog pins
-    //...
-    // Make an output pin for CS
-    //...
-    //...
-    // Set SDO1
-    RPB13Rbits.RPB13R = 0b0011; // SD01 on pin B13
-    //...
-    // Set SDI1
-    //...
-
-    // setup SPI1
-    SPI1CON = 0; // turn off the spi module and reset it
-    SPI1BUF; // clear the rx buffer by reading from it
-    SPI1BRG = 4799; // 1000 for 24kHz, 1 for 12MHz; // baud rate to 10 MHz [SPI1BRG = (48000000/(2*desired))-1]
-    SPI1STATbits.SPIROV = 0; // clear the overflow bit
-    SPI1CONbits.CKE = 1; // data changes when clock goes from hi to lo (since CKP is 0)
-    SPI1CONbits.MSTEN = 1; // master operation
-    SPI1CONbits.ON = 1; // turn on spi 
-}
-
-
-// send a byte via spi and return the response
-unsigned char spi_io(unsigned char o) {
-  SPI1BUF = o;
-  while(!SPI1STATbits.SPIRBF) { // wait to receive the byte
-    ;
-  }
-  return SPI1BUF;
-}
-
-void setVoltage(char channel, unsigned char voltage){
-    unsigned short data = voltage;
-    if (channel == 0) {//0 is channel A
-        data = (data << 4) | 0x7000;
+void blink (){
+    _CP0_SET_COUNT(0);                      
+    LATAbits.LATA4 = 1;                     
+    while (_CP0_GET_COUNT() <= 12000000) {     
+        ;                                   
     }
-    else if (channel == 1){ // 1 is channel B
-        data = (data << 4) | 0xF000;
+    _CP0_SET_COUNT(0);                      
+    LATAbits.LATA4 = 0;                     
+    while (_CP0_GET_COUNT() <= 12000000) {     
+        ;                                   
     }
-    CS = 0;
-    spi_io((data & 0xFF00) >> 8 ); // most significant byte of data
-    spi_io(data & 0x00FF);
-    CS = 1;
 }
 
+/////////////////////////////////
+#define IODIR 0x00
+#define GPIO 0x09
+#define OLAT 0x0A
 
-unsigned short sinwave(void)  {
-    int i;
-    static unsigned short sinvec[100];
-    for(i=0; i<SINLEN; i++) {
-		sinvec[i] = 127.5*sin((double)2*pi*i/(SINLEN))+127.5;    
-	}
-    return sinvec;
+unsigned char wcaddress = 0b01000000; //this includes a write bit! 
+
+unsigned char rcaddress = 0b01000001; //this includes a read bit! 
+
+
+unsigned char mcp23008_read( unsigned char reg){
+    unsigned char wadr = 0b01000000;
+    unsigned char radr = 0b01000001;
+    i2c_master_start();
+    i2c_master_send(wadr);
+    i2c_master_send(reg);
+    i2c_master_restart();
+    i2c_master_send(radr);
+    unsigned char r = i2c_master_recv();
+    i2c_master_ack(1);
+    i2c_master_stop();
+    
+    return r;
 }
 
-unsigned short triwave(void)  {	
-    int j;
-    static unsigned short trivec[100];
-    for(j=0; j<TRILEN/2; j++) {
-		trivec[j] = 255*((double)j/TRILEN/2);                     
-    }
-    for(j=TRILEN/2; j<TRILEN; j++) {
-        int i = 0;
-		trivec[j] = 255 - 255*((double)i/TRILEN/2);  
-        i++;
-    }
-    return trivec;
+void mcp23008_write(unsigned char chipadd, unsigned char registeradd, unsigned char newreg){
+    i2c_master_start();
+    i2c_master_send(chipadd); //send the chip address. 
+    i2c_master_send(registeradd); // send the register address.
+    i2c_master_send(newreg);
+    i2c_master_stop();
 }
-/////////////////////////////////////////////
-
 
 int main() {
 
@@ -204,42 +168,34 @@ int main() {
 
     __builtin_enable_interrupts();
     
-    
-    unsigned short sinv[100];
-    unsigned short triv[100];
-    
-    initSPI();             //  initialize spi1
-    sinv = sinwave();              //  create sin wave vector
-    triv = triwave();              //  create tri wave vector
-    
-    __builtin_enable_interrupts();
-    
-    //  loop should cycle through sin and tri vectors infinitely
-    
-    int sincount = 0;   //  counters to keep track of sinv and triv indexing
-    int tricount = 0;
-    char channel;
+    i2c_master_setup();
+//    i2c_master_start();
+//    i2c_master_send(rcaddress);
+//    i2c_master_send(IODIR);
+//    i2c_master_send(0b01111111);
+//    i2c_master_stop();
 
     while (1) {
-        
-        channel = 0;
-        setVoltage(channel,(sinv[sincount]));
-        
-        //  send tri wave to channel B
-        channel = 1;
-        setVoltage(channel,(triv[tricount]));
-        
-        sincount++;
-        tricount++;
-        
-        if  (sincount==SINLEN) {
-            sincount = 0;       //  reset sincount to start next sin wave period 
-        }
-        if  (tricount==TRILEN) {
-            tricount = 0;       //  reset tricount to start next tri wave period
-        }
+        // use _CP0_SET_COUNT(0) and _CP0_GET_COUNT() to test the PIC timing
+        // remember the core timer runs at half the sysclk
+        blink();
         
 
+        mcp23008_write(wcaddress, IODIR, 0b01111111); //GP7 as an output only. 
+        mcp23008_write(rcaddress, OLAT, 0b00000000); //OLAT reg low on GP7
+        
+        
+        unsigned char r ;
+        // GETS STUCK
+//        r = mcp23008_read(0x09);
+        
+//        while(r&0b1== 0b1 ){
+//            mcp23008_write(wcaddress, OLAT, 0b10000000);
+//            
+//        }
+        
 
     }
 }
+
+
