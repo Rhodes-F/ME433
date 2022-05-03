@@ -1,7 +1,6 @@
 #include<xc.h>           // processor SFR definitions
 #include<sys/attribs.h>  // __ISR macro
 #include<stdio.h>
-#include "i2c_master_noint.h"
 
 #define NU32_DESIRED_BAUD 230400    // Baudrate for RS232
 #define NU32_SYS_FREQ 48000000ul    // 48 million Hz
@@ -93,52 +92,6 @@ void StartUART1(){
     U1MODEbits.ON = 1;
 }
 
-void blink (){
-    _CP0_SET_COUNT(0);                      
-    LATAbits.LATA4 = 1;                     
-    while (_CP0_GET_COUNT() <= 12000000) {     
-        ;                                   
-    }
-    _CP0_SET_COUNT(0);                      
-    LATAbits.LATA4 = 0;                     
-    while (_CP0_GET_COUNT() <= 12000000) {     
-        ;                                   
-    }
-}
-
-/////////////////////////////////
-#define IODIR 0x00
-#define GPIO 0x09
-#define OLAT 0x0A
-
-unsigned char wcaddress = 0b01000000; //this includes a write bit! 
-
-unsigned char rcaddress = 0b01000001; //this includes a read bit! 
-
-
-unsigned char mcp23008_read( unsigned char reg){
-    unsigned char wadr = 0b01000000;
-    unsigned char radr = 0b01000001;
-    i2c_master_start();
-    i2c_master_send(wadr);
-    i2c_master_send(reg);
-    i2c_master_restart();
-    i2c_master_send(radr);
-    unsigned char r = i2c_master_recv();
-    i2c_master_ack(1);
-    i2c_master_stop();
-    
-    return r;
-}
-
-void mcp23008_write(unsigned char chipadd, unsigned char registeradd, unsigned char newreg){
-    i2c_master_start();
-    i2c_master_send(chipadd); //send the chip address. 
-    i2c_master_send(registeradd); // send the register address.
-    i2c_master_send(newreg);
-    i2c_master_stop();
-}
-
 int main() {
 
     __builtin_disable_interrupts(); // disable interrupts while initializing things
@@ -167,35 +120,35 @@ int main() {
     int i = 0;
 
     __builtin_enable_interrupts();
-    
-    i2c_master_setup();
-    i2c_master_start();
-    i2c_master_send(rcaddress);
-    i2c_master_send(IODIR);
-    i2c_master_send(0b01111111);
-    i2c_master_stop();
 
     while (1) {
         // use _CP0_SET_COUNT(0) and _CP0_GET_COUNT() to test the PIC timing
         // remember the core timer runs at half the sysclk
-        blink();
-        
-
-        mcp23008_write(wcaddress, IODIR, 0b01111111); //GP7 as an output only. 
-        mcp23008_write(rcaddress, OLAT, 0b00000000); //OLAT reg low on GP7
-        
-        
-        unsigned char r ;
-        // GETS STUCK
-//        r = mcp23008_read(0x09);
-//        
-//        while(r&0b1== 0b1 ){
-//            mcp23008_write(wcaddress, OLAT, 0b10000000);
-//            
-//        }
-        
+        if (PORTBbits.RB4 == 0){
+            i+=1;
+            sprintf(msg, "Button!!! %d \r\n", i);
+			WriteUART1(msg);
+            _CP0_SET_COUNT(0);                      
+            LATAbits.LATA4 = 1;                     
+            while (_CP0_GET_COUNT() <= 12000000) {     
+                ;                                   
+            }
+            _CP0_SET_COUNT(0);                      
+            LATAbits.LATA4 = 0;                     
+            while (_CP0_GET_COUNT() <= 12000000) {     
+                ;                                   
+            }
+            _CP0_SET_COUNT(0);                      
+            LATAbits.LATA4 = 1;                     
+            while (_CP0_GET_COUNT() <= 12000000) {     
+                ;                                   
+            }
+            _CP0_SET_COUNT(0);                      
+            LATAbits.LATA4 = 0;                     
+            while (_CP0_GET_COUNT() <= 12000000) {     
+                ;                                   
+            }
+        }
 
     }
 }
-
-
