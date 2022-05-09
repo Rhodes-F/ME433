@@ -170,29 +170,31 @@ int main() {
     
     i2c_master_setup();
     i2c_master_start();
-    i2c_master_send(rcaddress);
+    i2c_master_send(wcaddress);
     i2c_master_send(IODIR);
     i2c_master_send(0b01111111);
     i2c_master_stop();
-
+//    mcp23008_write(wcaddress, OLAT, 0b11111111);
     while (1) {
         // use _CP0_SET_COUNT(0) and _CP0_GET_COUNT() to test the PIC timing
         // remember the core timer runs at half the sysclk
         blink();
         
 
-        mcp23008_write(wcaddress, IODIR, 0b01111111); //GP7 as an output only. 
-        mcp23008_write(rcaddress, OLAT, 0b00000000); //OLAT reg low on GP7
-        
+//        mcp23008_write(wcaddress, IODIR, 0b01111111); //GP7 as an output only. 
+//        mcp23008_write(rcaddress, OLAT, 0b00000000); //OLAT reg low on GP7
+//        
         
         unsigned char r ;
         // GETS STUCK
-//        r = mcp23008_read(0x09);
-//        
-//        while(r&0b1== 0b1 ){
-//            mcp23008_write(wcaddress, OLAT, 0b10000000);
-//            
-//        }
+        r = mcp23008_read(0x09);
+        
+        if(r&0b1== 0b1 ){
+            mcp23008_write(wcaddress, OLAT, 0b10000000);
+            
+        }else{
+            mcp23008_write(wcaddress, OLAT, 0b00000000);
+        }
         
 
     }

@@ -144,8 +144,8 @@ void setVoltage(char channel, unsigned char voltage){
         data = (data << 4) | 0xF000;
     }
     CS = 0;
-    spi_io((data & 0xFF00) >> 8 ); // most significant byte of data
-    spi_io(data & 0x00FF);
+    spi_io(data >> 8 ); // most significant byte of data
+    spi_io(data);
     CS = 1;
 }
 
