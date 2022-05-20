@@ -209,8 +209,8 @@ int main() {
     unsigned short triv[100];
     
     initSPI();             //  initialize spi1
-    sinv = sinwave();              //  create sin wave vector
-    triv = triwave();              //  create tri wave vector
+    sinv = sinwave();
+    triv = triwave();
     
     __builtin_enable_interrupts();
     
