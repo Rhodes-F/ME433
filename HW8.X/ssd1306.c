@@ -88,4 +88,3 @@ void ssd1306_clear() {
     memset(ssd1306_buffer, 0, 512); // make every bit a 0, memset in string.h
 }
 
-

@@ -121,34 +121,22 @@ int main() {
 
     __builtin_enable_interrupts();
 
+    PIC32_Startup();
+    ws2812b_setup();
+    
+    //Here we will initialize the array values for the wsColor.
+    wsColor led[5];
+
     while (1) {
-        // use _CP0_SET_COUNT(0) and _CP0_GET_COUNT() to test the PIC timing
-        // remember the core timer runs at half the sysclk
-        if (PORTBbits.RB4 == 0){
-            i+=1;
-            sprintf(msg, "Button!!! %d \r\n", i);
-			WriteUART1(msg);
-            _CP0_SET_COUNT(0);                      
-            LATAbits.LATA4 = 1;                     
-            while (_CP0_GET_COUNT() <= 12000000) {     
-                ;                                   
-            }
-            _CP0_SET_COUNT(0);                      
-            LATAbits.LATA4 = 0;                     
-            while (_CP0_GET_COUNT() <= 12000000) {     
-                ;                                   
-            }
-            _CP0_SET_COUNT(0);                      
-            LATAbits.LATA4 = 1;                     
-            while (_CP0_GET_COUNT() <= 12000000) {     
-                ;                                   
-            }
-            _CP0_SET_COUNT(0);                      
-            LATAbits.LATA4 = 0;                     
-            while (_CP0_GET_COUNT() <= 12000000) {     
-                ;                                   
-            }
+      for (angle =0 ; angle<360; angle++){
+        for(i=0; i < 5 ; i++){
+          led[i]= HSBtoRGB((angle + 72*i)% 360, 1, .5);
         }
+        ws2812b_setColor(led, 5);
+        for(j = 0; j<10000000000; j++){
+          //do nothing in the for loop 
+        }
+      }
 
     }
 }

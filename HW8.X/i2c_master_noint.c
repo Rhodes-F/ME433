@@ -58,3 +58,15 @@ void i2c_master_stop(void) { // send a STOP:
         ;
     } // wait for STOP to complete
 }
+
+//SETPIN
+//This function is used when writing to an i2c slave device.
+//Please note that the chip address assumes you are inputing the slave address WITH
+//the write bit already in the address. All addresses must be bytes. 
+void setPin(unsigned char chipadd, unsigned char registeradd, unsigned char newreg){
+    i2c_master_start();
+    i2c_master_send(chipadd); //send the chip address. 
+    i2c_master_send(registeradd); // send the register address.
+    i2c_master_send(newreg);
+    i2c_master_stop();
+}

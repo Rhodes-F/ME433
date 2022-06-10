@@ -1,12 +1,12 @@
+#include <stdio.h>        // standard input output library.
+#include "font.h"
+#include "i2c_master_noint.h"
+#include "ssd1306.h"
 #include<xc.h>           // processor SFR definitions
 #include<sys/attribs.h>  // __ISR macro
-#include<stdio.h>
-#include "i2c_master_noint.h"
 
-#define NU32_DESIRED_BAUD 230400    // Baudrate for RS232
-#define NU32_SYS_FREQ 48000000ul    // 48 million Hz
+#define PIC32_SYS_FREQ 48000000ul    // 48 million Hz
 
-// DEVCFG0
 #pragma config DEBUG = OFF // disable debugging
 #pragma config JTAGEN = OFF // disable jtag
 #pragma config ICESEL = ICS_PGx1 // use PGED1 and PGEC1
@@ -22,7 +22,7 @@
 #pragma config OSCIOFNC = OFF // disable clock output
 #pragma config FPBDIV = DIV_1 // divide sysclk freq by 1 for peripheral bus clock
 #pragma config FCKSM = CSDCMD // disable clock switch and FSCM
-#pragma config WDTPS = PS1 // use largest wdt value
+#pragma config WDTPS = PS1048576 // use largest wdt value
 #pragma config WINDIS = OFF // use non-window mode wdt
 #pragma config FWDTEN = OFF // wdt disabled
 #pragma config FWDTWINSZ = WINSZ_25 // wdt window at 25%
@@ -33,13 +33,72 @@
 #pragma config FPLLODIV = DIV_2 // divide clock after FPLLMUL to get 48MHz
 
 // DEVCFG3
-#pragma config USERID = 0xffff // some 16bit userid, doesn't matter what
+#pragma config USERID = 0 // some 16bit userid, doesn't matter what
 #pragma config PMDL1WAY = OFF // allow multiple reconfigurations
 #pragma config IOL1WAY = OFF // allow multiple reconfigurations
 
-char msg[500];
+//EDITED------------------------------------------------------------------------------
 
-void ReadUART1(char * message, int maxLength) {
+#define PIC32_DESIRED_BAUD 230400    // Baudrate for RS232
+
+// Perform startup routines:
+//  Make NU32_LED1 and NU32_LED2 pins outputs (NU32_USER is by default an input)
+//  Initialize the serial port - UART3 (no interrupt) 
+//  Enable interrupts
+void PIC32_Startup() {
+
+  // disable interrupts
+  __builtin_disable_interrupts(); // disable interrupts while initializing things
+
+  // set the CP0 CONFIG register to indicate that kseg0 is cacheable (0x3)
+  __builtin_mtc0(_CP0_CONFIG, _CP0_CONFIG_SELECT, 0xa4210583);
+
+  // 0 data RAM access wait states
+  BMXCONbits.BMXWSDRM = 0x0;
+
+  // enable multi vector interrupts
+  INTCONbits.MVEC = 0x1;
+
+  // disable JTAG to get pins back
+  DDPCONbits.JTAGEN = 0;
+
+  // do your TRIS and LAT commands here
+  TRISAbits.TRISA4 = 0;   //A4 is an output
+  TRISBbits.TRISB4 = 1;   //B4 is an input
+
+  //Turning "off" the LATA4 register. 
+  LATAbits.LATA4 = 0;
+
+  //Here we want to assign pin function to the B13 and the B15 pin. 
+  RPB7Rbits.RPB7R = 0b0001;     //Here we assign the TX pin to the output pin. [pin 26]
+  U1RXRbits.U1RXR = 0b0001;       //Here we assign the RX pin to the B13 pin [pin 24]
+
+
+  // turn on UART1 without an interrupt
+  U1MODEbits.BRGH = 0; // set baud to NU32_DESIRED_BAUD
+  U1BRG = ((PIC32_SYS_FREQ / PIC32_DESIRED_BAUD) / 16) - 1;
+
+  // 8 bit, no parity bit, and 1 stop bit (8N1 setup)
+  U1MODEbits.PDSEL = 0;
+  U1MODEbits.STSEL = 0;
+
+  // configure TX & RX pins as output & input pins
+  U1STAbits.UTXEN = 1;
+  U1STAbits.URXEN = 1;
+  
+  ANSELA = 0; 
+  ANSELB = 0; 
+  
+  // enable the uart
+  U1MODEbits.ON = 1;
+
+  __builtin_enable_interrupts();
+}
+
+// Read from UART3
+// block other functions until you get a '\r' or '\n'
+// send the pointer to your char array and the number of elements in the array
+void PIC32_ReadUART1(char * message, int maxLength) {
   char data = 0;
   int complete = 0, num_bytes = 0;
   // loop until you get a '\r' or '\n'
@@ -63,7 +122,7 @@ void ReadUART1(char * message, int maxLength) {
 }
 
 // Write a character array using UART3
-void WriteUART1(const char * string) {
+void PIC32_WriteUART1(const char * string) {
   while (*string != '\0') {
     while (U1STAbits.UTXBF) {
       ; // wait until tx buffer isn't full
@@ -73,130 +132,83 @@ void WriteUART1(const char * string) {
   }
 }
 
-void StartUART1(){
-    __builtin_disable_interrupts(); // disable interrupts while initializing things
-    // UART ?
-    U1MODEbits.BRGH = 0; // set baud to NU32_DESIRED_BAUD
-    U1BRG = ((NU32_SYS_FREQ / NU32_DESIRED_BAUD) / 16) - 1;
-
-    // 8 bit, no parity bit, and 1 stop bit (8N1 setup)
-    U1MODEbits.PDSEL = 0;
-    U1MODEbits.STSEL = 0;
-
-    // configure TX & RX pins as output & input pins
-    U1STAbits.UTXEN = 1;
-    U1STAbits.URXEN = 1;
-    // configure hardware flow control using RTS and CTS
-    U1MODEbits.UEN = 2;
-
-    // enable the uart
-    U1MODEbits.ON = 1;
-}
-
-void blink (){
-    _CP0_SET_COUNT(0);                      
-    LATAbits.LATA4 = 1;                     
-    while (_CP0_GET_COUNT() <= 12000000) {     
-        ;                                   
-    }
-    _CP0_SET_COUNT(0);                      
-    LATAbits.LATA4 = 0;                     
-    while (_CP0_GET_COUNT() <= 12000000) {     
-        ;                                   
-    }
-}
-
-/////////////////////////////////
-#define IODIR 0x00
-#define GPIO 0x09
-#define OLAT 0x0A
-
-unsigned char wcaddress = 0b01000000; //this includes a write bit! 
-
-unsigned char rcaddress = 0b01000001; //this includes a read bit! 
-
-
-unsigned char mcp23008_read( unsigned char reg){
-    unsigned char wadr = 0b01000000;
-    unsigned char radr = 0b01000001;
-    i2c_master_start();
-    i2c_master_send(wadr);
-    i2c_master_send(reg);
-    i2c_master_restart();
-    i2c_master_send(radr);
-    unsigned char r = i2c_master_recv();
-    i2c_master_ack(1);
-    i2c_master_stop();
+//This function blinks the A4 pin
+void blink(void){
+    int ctime; 
     
-    return r;
+    _CP0_SET_COUNT(0);
+    ctime = _CP0_GET_COUNT();   //This will get the current count -- the core time is 32-bit timer.
+
+    while (ctime != 36000001 ){
+
+        ctime = _CP0_GET_COUNT();   //This will get the current count -- the core time is 32-bit timer.
+
+        if (ctime < 12000000){
+            LATAbits.LATA4 = 1; //Turn the A4 bit on 
+        }
+        else if (ctime >= 12000000 && ctime < 24000000){
+            LATAbits.LATA4 = 0;     //Turn the A4 bit off. 
+        }
+        else if (ctime >= 24000000 && ctime < 36000000){    
+            LATAbits.LATA4 = 1;     //Turn the A4 bit on 
+        }  
+        else if (ctime >= 36000000){
+            LATAbits.LATA4 = 0;
+        }
+    }
+
 }
 
-void mcp23008_write(unsigned char chipadd, unsigned char registeradd, unsigned char newreg){
-    i2c_master_start();
-    i2c_master_send(chipadd); //send the chip address. 
-    i2c_master_send(registeradd); // send the register address.
-    i2c_master_send(newreg);
-    i2c_master_stop();
-}
+#define BUFFER_SIZE 100
 
 int main() {
-
-    __builtin_disable_interrupts(); // disable interrupts while initializing things
-
-    // set the CP0 CONFIG register to indicate that kseg0 is cacheable (0x3)
-    __builtin_mtc0(_CP0_CONFIG, _CP0_CONFIG_SELECT, 0xa4210583);
-
-    // 0 data RAM access wait states
-    BMXCONbits.BMXWSDRM = 0x0;
-
-    // enable multi vector interrupts
-    INTCONbits.MVEC = 0x1;
-
-    // disable JTAG to get pins back
-    DDPCONbits.JTAGEN = 0;
-
-    // do your TRIS and LAT commands here
-    TRISAbits.TRISA4 = 0 ;// output
-    LATAbits.LATA4 = 0; //high
-    TRISBbits.TRISB4 = 1; // input
-    
-    // uart stuff
-    StartUART1();
-    U1RXRbits.U1RXR = 0b0000; // Set A2 to U1RX
-    RPB3Rbits.RPB3R = 0b0001; // Set B3 to U1TX
-    int i = 0;
-
-    __builtin_enable_interrupts();
-    
+    //Startup the PIC32 and the i2c module
+    PIC32_Startup();
     i2c_master_setup();
-    i2c_master_start();
-    i2c_master_send(wcaddress);
-    i2c_master_send(IODIR);
-    i2c_master_send(0b01111111);
-    i2c_master_stop();
-//    mcp23008_write(wcaddress, OLAT, 0b11111111);
+    ssd1306_setup();    
+    
+    int i = 0;
+    char msg[50];
+    char movinfvar[50];
+    
     while (1) {
-        // use _CP0_SET_COUNT(0) and _CP0_GET_COUNT() to test the PIC timing
-        // remember the core timer runs at half the sysclk
-        blink();
+        float frametime;
+        float ctcount; 
+        float fps;
+        // clear screen 
+        ssd1306_clear();
+        _CP0_SET_COUNT(0);  //Sets the CP0 count to 0. 
+        blink();    
         
-//
-////        mcp23008_write(wcaddress, IODIR, 0b01111111); //GP7 as an output only. 
-////        mcp23008_write(rcaddress, OLAT, 0b00000000); //OLAT reg low on GP7
-////        
-//        
-//        unsigned char r ;
-//        // GETS STUCK
-//        r = mcp23008_read(0x09);
-//        
-//        if(r&0b1== 0b1 ){
-//            mcp23008_write(wcaddress, OLAT, 0b10000000);
-//            
-//        }else{
-//            mcp23008_write(wcaddress, OLAT, 0b00000000);
-//        }
-        
+        //print an int in the top right. 
+        sprintf(msg,"%d",i);
+        drawString(0,0,msg);
 
+        ssd1306_update();
+        ctcount = _CP0_GET_COUNT();
+
+        frametime = ctcount * ((float)1/PIC32_SYS_FREQ);
+        fps = (float)60/frametime; 
+        
+        //Paste the FPS to the msg. 
+        sprintf(msg, "FPS: %f", fps);
+        
+        drawString(55,24,msg);
+        ssd1306_update();
+        
+        i++;
+        
+        //trying to blink a pixle to see if oled works 
+        // it did not i think my pic is broken 
+//        ssd1306_drawPixel(1,2,1);
+//        ssd1306_update();
+//        _CP0_SET_COUNT(0);
+//        while(_CP0_GET_COUNT()<24000000){;}
+//        ssd1306_drawPixel(1,2,0);
+//        ssd1306_update();
+        
+        
+        //Testing the FPS function.
     }
 }
 
